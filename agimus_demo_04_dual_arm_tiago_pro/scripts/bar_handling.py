@@ -289,13 +289,12 @@ cg.addConstraints(
 
 mobile_states = ["free", "transit", "unconstrained"]
 
-print("--- Verrouillage sélectif de la base ---")
 
 for edge_name in cg.edges.keys():
     node_from, node_to = cg.getNodesConnectedByEdge(edge_name)
-    
+    <
     if node_to not in mobile_states and node_from not in mobile_states:
-        print(f"  Locking base on internal edge: {edge_name}")
+        print(f"  Locking base on edge: {edge_name}")
         cg.addConstraints(
             edge=edge_name,
             constraints=Constraints(numConstraints=["locked_base_mobility"])
