@@ -12,6 +12,7 @@ from hpp.corbaserver.manipulation import (
 )
 from hpp.gepetto.manipulation import ViewerFactory
 
+
 #### Definition of object models ####
 class Table:
     rootJointType = "anchor"
@@ -33,6 +34,7 @@ class ReinforcmentBar:
     srdfFilename = (
         "package://agimus_demo_04_dual_arm_tiago_pro/srdf/reinforcment_bar.srdf"
     )
+
 
 loadServerPlugin("corbaserver", "manipulation-corba.so")
 Client().problem.resetProblem()
@@ -83,15 +85,15 @@ vf.loadObjectModel(ReinforcmentBar, "reinforcment_bar")
 
 # Set joint bounds
 robot.setJointBounds(
-    "plate/root_joint", [-3, 3, -3, 3, 0, 2, -1, 1, -1, 1, -1, 1, -1, 1]
+    "plate/root_joint", [-0.5, 1.5, -1, 1, 0, 1.5, -1, 1, -1, 1, -1, 1, -1, 1]
 )
 robot.setJointBounds(
-    "reinforcment_bar/root_joint", [-3, 3, -3, 3, 0, 2, -1, 1, -1, 1, -1, 1, -1, 1]
+    "reinforcment_bar/root_joint",
+    [-0.5, 1.5, -1, 1, 0, 1.5, -1, 1, -1, 1, -1, 1, -1, 1],
 )
-robot.setJointBounds("tiago_pro/root_joint", [-3, 3, -3, 3, -1, 1, -1, 1])
+robot.setJointBounds("tiago_pro/root_joint", [-1.5, 3.5, -2, 2, -1, 1, -1, 1])
 
-#### Define grippers and handles ####
-
+#### Define Grippers and Handles ####
 # Grippers on tiago
 c = sqrt(2) / 2
 robot.client.manipulation.robot.addGripper(
@@ -154,15 +156,21 @@ for j, v in lockedHead.items():
 
 # 3. Lock Wheels
 locked_wheels = list()
-for j in ["tiago_pro/wheel_front_left_joint", "tiago_pro/wheel_front_right_joint", "tiago_pro/wheel_rear_left_joint", "tiago_pro/wheel_rear_right_joint"]:
+for j in [
+    "tiago_pro/wheel_front_left_joint",
+    "tiago_pro/wheel_front_right_joint",
+    "tiago_pro/wheel_rear_left_joint",
+    "tiago_pro/wheel_rear_right_joint",
+]:
     constraint = f"locked_{j}"
     ps.createLockedJoint(constraint, j, [1, 0])
     locked_wheels.append(constraint)
     ps.setConstantRightHandSide(constraint, True)
 
 # 4. Lock Plate (FIXED on the table)
-# On fixe la plaque explicitement à sa position initiale [0.6, 0, 0.66]
-ps.createLockedJoint("locked_plate/root_joint", "plate/root_joint", [0.6, 0, 0.66, 0, 0, 0, 1])
+ps.createLockedJoint(
+    "locked_plate/root_joint", "plate/root_joint", [0.6, 0, 0.66, 0, 0, 0, 1]
+)
 ps.setConstantRightHandSide("locked_plate/root_joint", True)
 locked_plate = ["locked_plate/root_joint"]
 
@@ -180,11 +188,12 @@ for j in filter(
     and not s.startswith("tiago_pro/head")
     and not s.startswith("tiago_pro/wheel")
     and "gripper" not in s
-    and s != "tiago_pro/torso_lift_joint" # <--- Excluded
+    and s != "tiago_pro/torso_lift_joint"  # <--- Excluded
     and s != "tiago_pro/root_joint",
     robot.jointNames,
 ):
-    if j in seen_joints: continue
+    if j in seen_joints:
+        continue
     seen_joints.add(j)
     constraint = f"locked_{j}"
     ps.createLockedJoint(constraint, j, [0])
@@ -199,20 +208,32 @@ locked_torso = ["locked_torso"]
 #### Constraint Graph ####
 
 # Generate constraint graph
-cg = ConstraintGraph(robot, "graph") # Empty graph
-factory = ConstraintGraphFactory(cg) # Factory to create the graph structure for manipulation
-factory.setGrippers(["tiago_pro/left"]) # Grippers used for manipulation (don't add the right here because if you do that the factory generates a graph for single arm manipulation and bimanual manipulation)
-factory.environmentContacts(["table/reinforcment_bar_support", "plate/top"]) # Surfaces of the environment used for contacts
+cg = ConstraintGraph(robot, "graph")  # Empty graph
+factory = ConstraintGraphFactory(
+    cg
+)  # Factory to create the graph structure for manipulation
+factory.setGrippers(
+    ["tiago_pro/left"]
+)  # Grippers used for manipulation (don't add the right here because if you do that the factory generates a graph for single arm manipulation and bimanual manipulation)
+factory.environmentContacts(
+    ["table/reinforcment_bar_support", "plate/top"]
+)  # Surfaces of the environment used for contacts
 factory.setObjects(
-    ["reinforcment_bar"], [["reinforcment_bar/left"]], [["reinforcment_bar/bottom"]] # arg1: names of manipulated objects, arg2: list of handles of each object for the grippers, arg3: list of contact surfaces with the environment
-) # Manipulated objects and their handles definition
-factory.generate() # Generate the graph structure
+    ["reinforcment_bar"],
+    [["reinforcment_bar/left"]],
+    [
+        ["reinforcment_bar/bottom"]
+    ],  # arg1: names of manipulated objects, arg2: list of handles of each object for the grippers, arg3: list of contact surfaces with the environment
+)  # Manipulated objects and their handles definition
+factory.generate()  # Generate the graph structure
 
 #### Additional states, transitions and constraints ####
 
 # Add a state and transition to project on 'free' with static tiago_pro and plate
 cg.createNode("unconstrained")
-cg.createEdge("unconstrained", "free", "project-on-free", 1, "unconstrained") # (origine, destination, nom de la transition, poids, esace des solution dont elle doit aussi faire partie 
+cg.createEdge(
+    "unconstrained", "free", "project-on-free", 1, "unconstrained"
+)  # (origine, destination, nom de la transition, poids, esace des solution dont elle doit aussi faire partie
 # Lock wheels, head and grippers everywhere
 cg.addConstraints(
     graph=True,
@@ -253,53 +274,61 @@ cg.addConstraints(
 )
 
 
-## ADD transit state and transitions ##
-cg.createNode("transit")
-constraint_grasp_left = "tiago_pro/left grasps reinforcment_bar/left"
-constraint_grasp_right = "tiago_pro/right grasps reinforcment_bar/right" 
 node_grasp = "tiago_pro/left grasps reinforcment_bar/left"
-# Node constraints for transit state
-# - The arm and torso and head joints are locked to avoid unnecessary movements during transit
-# - It herits all other constraints from 'node_grasp' (grasp constraints for both arms)
-cg.addConstraints(
-    node="transit",
-    constraints=Constraints(numConstraints=[
-            constraint_grasp_left, 
-            constraint_grasp_right,
-        ]
-    )
-)
 # Edges transitions for transit states
-# grasp -> transit (Tiago locking its arms after placing the bar)
-cg.createEdge(node_grasp, "transit", "start_transit", 1, node_grasp)
+# create an edge to allow the robot to move is base in grasp but not its arms
+cg.createEdge("free", "free", "transit_free", 1, "free")
 cg.addConstraints(
-    edge="start_transit",
-    constraints=Constraints(numConstraints=locked_arms + locked_torso)
+    edge="transit_free",
+    constraints=Constraints(numConstraints=locked_arms + locked_torso),
 )
-# transit -> Grasp (Tiago unlocking its arms and locking its base before placing the bar)
-cg.createEdge("transit", node_grasp, "end_transit", 1, "transit")
-
-# transit -> transit (Tiago moving while holding the bar)
-cg.createEdge("transit", "transit", "move_transit", 1, "transit")
+# On s'assure que l'objet ne glisse pas sur la table pendant que le robot roule
 cg.addConstraints(
-    edge="move_transit",
-    constraints=Constraints(numConstraints=locked_arms + locked_torso)
+    edge="transit_free",
+    constraints=Constraints(numConstraints=["place_reinforcment_bar/complement"]),
 )
 
+# Transit dans l'état GRASP (avec object)
+cg.createEdge(node_grasp, node_grasp, "transit_grasp", 1, node_grasp)
+cg.addConstraints(
+    edge="transit_grasp",
+    constraints=Constraints(numConstraints=locked_arms + locked_torso),
+)
+# disable the base mobility during manipulation except during transit
+# Liste des arêtes explicitement dédiées au movement de la base
+explicit_transit_edges = ["transit_free", "transit_grasp", "project-on-free"]
 
-mobile_states = ["free", "transit", "unconstrained"]
+# Définition des noeuds "Mobiles" (où le robot voyage)
+mobile_nodes = ["free", "unconstrained"]
 
 
-for edge_name in cg.edges.keys():
-    node_from, node_to = cg.getNodesConnectedByEdge(edge_name)
-    <
-    if node_to not in mobile_states and node_from not in mobile_states:
-        print(f"  Locking base on edge: {edge_name}")
-        cg.addConstraints(
-            edge=edge_name,
-            constraints=Constraints(numConstraints=["locked_base_mobility"])
-        )
+# for edge in cg.edges.keys():
+#     # Ignore explicit transit edges
+#     if edge in explicit_transit_edges:
+#         continue
 
+#     node_from, node_to = cg.getNodesConnectedByEdge(edge)
+
+#     is_from_mobile = node_from in mobile_nodes
+#     is_to_mobile = node_to in mobile_nodes
+#     # Ignore Approach/Withdraw edges (Mobile <-> Static)
+#     if is_from_mobile != is_to_mobile:
+#         # print(f"Unlocked Approach/Withdraw: {edge}")
+#         continue
+#     # Lock base mobility in other cases
+#     # Case A : "Loop | f" in Free
+#     # Case B : Manipulation (Grasp -> Grasp, Pregrasp -> Grasp...)
+#     cg.addConstraints(
+#         edge=edge,
+#         constraints=Constraints(numConstraints=locked_base_mobility)
+#     )
+#     print(f"Locked Base Mobility on {edge}")
+cg.addConstraints(
+    edge="Loop | f", constraints=Constraints(numConstraints=locked_base_mobility)
+)
+cg.addConstraints(
+    edge="Loop | 0-0", constraints=Constraints(numConstraints=locked_base_mobility)
+)
 print(f"edge number: {len(cg.edges)}")
 # Add weight to transitions
 cg.setWeight("Loop | f", 1)
@@ -310,7 +339,7 @@ cg.initialize()
 
 # Set initial configuration
 q0 = robot.getCurrentConfig()
-r = robot.rankInConfiguration["tiago_pro/root_joint"] 
+r = robot.rankInConfiguration["tiago_pro/root_joint"]
 q0[r : r + 4] = [3, 0, -1, 0]
 r = robot.rankInConfiguration["plate/root_joint"]
 q0[r : r + 3] = [0.6, 0, 0.66]
@@ -324,10 +353,22 @@ q0[r : r + 7] = [
     0.6966816640367284,
     -0.12097379466237763,
 ]
-res, q_init, err = cg.applyNodeConstraints("free", q0) # Apply 'free' node constraints to q0 to get a valid initial configuration
-q_goal = q_init[:] # Copy initial configuration to goal configuration
-q_goal[r : r + 7] = [0.2, 0, 0.7, 0, c, c, 0] # Modify goal configuration for reinforcment_bar position
-res, q_goal, err = cg.generateTargetConfig("project-on-free", q_goal, q_goal) # Project goal configuration on 'free' node constraints
+res, q_init, err = cg.applyNodeConstraints(
+    "free", q0
+)  # Apply 'free' node constraints to q0 to get a valid initial configuration
+q_goal = q_init[:]  # Copy initial configuration to goal configuration
+q_goal[r : r + 7] = [
+    0.2,
+    0,
+    0.7,
+    0,
+    c,
+    c,
+    0,
+]  # Modify goal configuration for reinforcment_bar position
+res, q_goal, err = cg.generateTargetConfig(
+    "project-on-free", q_goal, q_goal
+)  # Project goal configuration on 'free' node constraints
 assert res
 # Set goal configuration
 # Load path optimizers
@@ -342,7 +383,7 @@ ps.addGoalConfig(q_goal)
 
 helper = Helper(ps, cg)
 
-# Get the 4 key configurations
+# Get the key configurations
 q1, q2 = helper.generateIntermediateConfigs(q_init, q_goal)
 ps.addConfigToRoadmap(q1)
 ps.addConfigToRoadmap(q2)
@@ -352,5 +393,3 @@ v = vf.createViewer()
 v(q_init)
 ps.solve()
 helper.optimizePath(ps.numberPaths() - 1)
-
-
