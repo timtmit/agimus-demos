@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panda">
+  <xacro:include filename="$(find agimus_demo_10_tiago_manipulation)/urdf/table.urdf.xacro"/>
+
+  <xacro:table parent_link="world" child_link="base">
+    <origin xyz="0 0 0.68" rpy="0 0 0"/>
+  </xacro:table>
+
+</robot>

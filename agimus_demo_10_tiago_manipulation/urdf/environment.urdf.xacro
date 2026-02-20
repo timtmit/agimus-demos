@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="obstacle">
+  <!-- Include table -->
+  <xacro:include filename="$(find agimus_demo_10_tiago_manipulation)/urdf/table.urdf.xacro"/>
+
+  <link name="robot_attachment_link"/>
+  <xacro:table parent_link="robot_attachment_link">
+    <origin xyz="0 0 -0.68" rpy="0 0 0"/>
+  </xacro:table>
+
+</robot>
