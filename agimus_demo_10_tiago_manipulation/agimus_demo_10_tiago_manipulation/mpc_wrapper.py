@@ -1,4 +1,4 @@
-from aligator_mpc import MPC, Config, PatternGenerator
+from aligator_mpc import MPC, PatternGenerator, ConfigManager
 import rclpy
 from rclpy.node import Node
 from std_srvs.srv import Trigger
@@ -6,7 +6,7 @@ from linear_feedback_controller_msgs.msg import Control, Sensor
 from sensor_msgs.msg import JointState
 from std_msgs.msg import MultiArrayDimension, ColorRGBA, Float32, String
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose, Twist, TwistStamped
 from rclpy.qos import ReliabilityPolicy, DurabilityPolicy, HistoryPolicy, QoSProfile
 from rclpy.duration import Duration
 from pathlib import Path
@@ -23,10 +23,14 @@ class AligatorMPC(Node):
         self.get_logger().info("Aligator MPC starting...")
         self.declare_parameter("config", "No path set for mpc config file !")
         config_path = self.get_parameter("config").value
-        self.mpc_parameters = Config.from_yaml(Path(config_path))
+        config_manager = ConfigManager(Path(config_path))
+        self.mpc_parameters = config_manager.build_config(
+            robot_name="tiago", task_name="glue_spreading"
+        )
+        # self.get_logger().info(f"MPC parameters loaded from {config_path} :\n {self.mpc_parameters}")
 
         # Waypoints ================================================================
-        patternGen = PatternGenerator([0.36, 0.5, 0], (1.0, 0.0, 0.5))  # testing
+        patternGen = PatternGenerator([0.36, 0.5, 0], (0.75, -0.25, 0.5))  # testing
         # patternGen = PatternGenerator([0.24,0.3,0], (0.5, 0,0.3)) # real box
 
         self.mpc_waypoints = patternGen.generate_pattern("zigzag_curve", stride=0.05)
@@ -41,8 +45,12 @@ class AligatorMPC(Node):
         self.feedback_gain_scaling = 1.0
 
         # ROS2 publishers & subscribers ============================================
+        self.last_sensor_msg = Sensor()
+        self.last_base_pose = Pose()
+        self.last_base_twist = Twist()
+        self.first_odom_get = False
         self.control_publisher = self.create_publisher(Control, "control", 10)
-        self.base_control_msg = self.build_base_control_msg()
+        self.base_control_msg = None
         self.mpc_ee_pred_published = self.create_publisher(
             Marker, "aligator_mpc/ee_prediction_on_horizon", 10
         )
@@ -51,6 +59,9 @@ class AligatorMPC(Node):
         )
         self.mpc_time_publisher = self.create_publisher(
             Float32, "aligator_mpc/pub_control_duration", 10
+        )
+        self.mpc_base_control_publisher = self.create_publisher(
+            TwistStamped, "mobile_base_controller/cmd_vel", 10
         )
 
         qos = QoSProfile(
@@ -67,6 +78,9 @@ class AligatorMPC(Node):
         self.subscription_sensor = self.create_subscription(
             Sensor, "sensor", self.sensor_callback, qos
         )
+        # self.subscriptions_base_odometry = self.create_subscription(
+        #     Odometry, "/mobile_base_controller/odom", self.base_odometry_callback, qos
+        # )
         self.subscription_robot_descr = self.create_subscription(
             String, "robot_description", self.robot_descr_callback, qos_r_desc
         )
@@ -76,11 +90,10 @@ class AligatorMPC(Node):
         self.mpc_started = False
 
         # Publisher timers ===============================================================
-        ctrl_timer_period = self.mpc_parameters.mpc.dt
+        ctrl_timer_period = self.mpc_parameters.task.mpc.dt
         _ = self.create_timer(ctrl_timer_period, self.publish_control_callback)
         waypoints_timer_period = 0.1
         _ = self.create_timer(waypoints_timer_period, self.publish_waypoints_callback)
-
         self.get_logger().info("End of Setup")
 
     def publish_control_callback(self) -> None:
@@ -125,12 +138,16 @@ class AligatorMPC(Node):
             stop = time.time()
             delta_t = Float32()
             delta_t.data = stop - start
-            if (stop - start) > self.mpc_parameters.mpc.dt:
+            if (stop - start) > self.mpc_parameters.task.mpc.dt:
                 self.get_logger().warning(f"MPC OVERRUN ({stop - start})")
             self.mpc_time_publisher.publish(delta_t)
 
     def publish_waypoints_callback(self) -> None:
-        self.mpc_imput_waypoints_publisher.publish(self.waypoints_marker_msg)
+        if (
+            self.waypoints_marker_msg.header.frame_id != ""
+        ):  # Vérifier qu'il est initialisé
+            self.waypoints_marker_msg.header.stamp = self.get_clock().now().to_msg()
+            self.mpc_imput_waypoints_publisher.publish(self.waypoints_marker_msg)
 
     def sensor_callback(self, msg: Sensor) -> None:
         """Callback when a message is published on `/Sensor` topic. Updates the `self.robot_state` with the message data.
@@ -141,24 +158,28 @@ class AligatorMPC(Node):
         """
 
         self.last_sensor_msg = msg
+        if self.mpc_ready:
+            # Get robot state
+            position = list(msg.joint_state.position)
+            position = np.array(position)
 
-        # Get robot state
-        position = list(msg.joint_state.position)
-        position = np.array(position)
+            velocity = list(msg.joint_state.velocity)
+            velocity = np.array(velocity)
 
-        velocity = list(msg.joint_state.velocity)
-        velocity = np.array(velocity)
+            self.robot_state = np.concatenate((position, velocity))
+            self.mpc.setStartPose(position)  # update pinocchio model in the MPC
 
-        self.robot_state = np.concatenate((position, velocity))
-        self.mpc.setStartPose(position)  # update pinocchio model in the MPC
-
-        if self.first_mpc_iteration and self.mpc_ready:
-            self.get_logger().info("MPC launched")
-            self.first_mpc_iteration = False
-
-            self.mpc.initStages()  # once the start pose is set the stages must be computed before the first solver iteration
-            mpc_traj = self.mpc.stage_factory.getFullTrajectory_pt_by_pt()
-            self.waypoints_marker_msg = self.waypoints_to_marker(mpc_traj)
+            if self.first_mpc_iteration:
+                self.first_mpc_iteration = False
+                self.base_control_msg = self.build_base_control_msg()
+                self.mpc.initStages()  # once the start pose is set the stages must be computed before the first solver iteration
+                mpc_traj = self.mpc.stage_factory.getFullTrajectory_pt_by_pt()
+                self.waypoints_marker_msg = self.waypoints_to_marker(mpc_traj)
+                self.get_logger().info("MPC launched")
+        else:
+            self.get_logger().warning(
+                "MPC not launched yet, received sensor data but not using it"
+            )
 
     def robot_descr_callback(self, msg: String) -> None:
         """Gets the robot description from the /robot_description topic and starts the MPC
@@ -168,8 +189,11 @@ class AligatorMPC(Node):
         """
 
         robot_urdf = msg.data
-        self.mpc = MPC(self.mpc_waypoints, self.mpc_parameters, robot_urdf)
+        self.mpc = MPC(
+            self.mpc_waypoints, self.mpc_parameters, robot_urdf, self.get_logger()
+        )
         self.mpc_ready = True
+        self.get_logger().info("Robot description received, MPC ready to be launched")
 
     def launch_mpc_callback(self, request, response):
         """Callback triggered with service /mpc_launch is called
@@ -233,7 +257,8 @@ class AligatorMPC(Node):
         color_list = []
 
         marker = Marker()
-        marker.header.frame_id = "base_link"
+        marker.header.frame_id = "base_footprint"
+        marker.header.stamp = self.get_clock().now().to_msg()
         marker.type = Marker.LINE_STRIP
         marker.scale.x = 0.005
         nb_points = len(xs_table)
@@ -274,7 +299,8 @@ class AligatorMPC(Node):
 
         points_list = []
         marker = Marker()
-        marker.header.frame_id = "base_link"
+        marker.header.frame_id = "base_footprint"
+        marker.header.stamp = self.get_clock().now().to_msg()
         marker.type = Marker.LINE_STRIP
         marker.scale.x = 0.01
         marker.lifetime = Duration().to_msg()
