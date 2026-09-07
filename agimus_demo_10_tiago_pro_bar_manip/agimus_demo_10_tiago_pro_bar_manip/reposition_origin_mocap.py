@@ -7,8 +7,8 @@ from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 from tf2_ros import TransformException
 
 MOCAP_WORLD_FRAME_NAME = "world_mocap"
-MOCAP_BASE_FRAME_NAME = "tiago_base/base"
-MOCAP_BAR_FRAME_NAME = "cube/base"
+MOCAP_BASE_FRAME_NAME = "base_link_mocap"
+MOCAP_BAR_FRAME_NAME = "bar_base_link"
 WORLD_FRAME_NAME = "world"
 BAR_FRAME_NAME = "bar_base_link"
 
@@ -30,7 +30,12 @@ class MocapWorldPub(Node):
 
         self._got_init_world_mocap_2_base_mocap = False
 
+        self.get_logger().info(
+            f"Looking up TF : {MOCAP_WORLD_FRAME_NAME} -> {MOCAP_BASE_FRAME_NAME}"
+        )
+
     def _cb_listener(self):
+
         if not self._got_init_world_mocap_2_base_mocap:
             try:
                 t = self._tf_buffer.lookup_transform(
@@ -40,14 +45,13 @@ class MocapWorldPub(Node):
                 t.header.frame_id = WORLD_FRAME_NAME  # parent frame
                 t.child_frame_id = MOCAP_WORLD_FRAME_NAME  # child frame
 
-                self.get_logger().info(f"transform {t}")
+                self.get_logger().info(
+                    f"Found transform :{MOCAP_WORLD_FRAME_NAME} ->{MOCAP_BASE_FRAME_NAME}"
+                )
                 self.tf_static_broadcaster.sendTransform(t)
                 self._got_init_world_mocap_2_base_mocap = True
 
-            except TransformException as ex:
-                self.get_logger().info(
-                    f"Could not transform {MOCAP_WORLD_FRAME_NAME} to {MOCAP_BASE_FRAME_NAME}: {ex}"
-                )
+            except TransformException:
                 self._got_init_world2base_mocap = False
 
                 return
