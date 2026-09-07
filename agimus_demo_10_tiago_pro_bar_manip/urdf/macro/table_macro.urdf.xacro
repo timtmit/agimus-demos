@@ -7,6 +7,13 @@
       <color rgba="0.0 0.0 0.4 1.0"/>
     </material>
 
+    <link name="mocap_table"/>
+    <joint name="mocap_to_table" type="fixed">
+      <parent link="mocap_table"/>
+      <child link="table_link"/>
+      <origin xyz="0.7 -0.7 0" rpy="0 0 1.57"/>
+    </joint>
+
     <link name="${prefix}table_link">
 
       <inertial>
@@ -45,12 +52,6 @@
 
     </link>
 
-    <link name="mocap_table"/>
-    <joint name="mocap_to_table" type="fixed">
-      <parent link="table_link"/>
-      <child link="mocap_table"/>
-      <origin xyz="0.7 -0.7 0" rpy="0 0 1.57"/>
-    </joint>
 
   </xacro:macro>
 
