@@ -184,11 +184,11 @@ def launch_setup(
             "-topic",
             "bar_description",
             "-x",
-            "1.56",
+            "2.18",
             "-y",
             "0.0",
             "-z",
-            "0.76",
+            "0.78",
             "-R",
             "1.5708",  # roll
             "-P",
@@ -370,6 +370,29 @@ def launch_setup(
         output="screen",
     )
 
+    # MOCAP ===========================================
+
+    mocap_tf_pub = Node(
+        package="mocap_ros",
+        executable="mocap_node",
+        name="mocap_node",
+        output="screen",
+        parameters=[
+            {
+                "param_file": PathJoinSubstitution(
+                    [FindPackageShare(PKG_NAME), "config", "mocap_config.yaml"]
+                ),
+            }
+        ],
+    )
+
+    mocap_repositioning_node = Node(
+        package=PKG_NAME,
+        executable="mocap_repositioning_node",
+        name="mocap_repositioning_node",
+        output="screen",
+    )
+
     return [
         set_gz_resource_path,
         tiago_robot_launch,
@@ -392,6 +415,8 @@ def launch_setup(
         # plotjuggler,
         world_to_gazebo_bridge,
         gz_bridge_odom,
+        mocap_tf_pub,
+        mocap_repositioning_node,
     ]
 
 

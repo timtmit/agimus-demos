@@ -16,6 +16,7 @@
   </joint>
 
   <xacro:table/>
+  <!-- <link name="table_link"/> -->
   <joint name="table_world_joint" type="fixed">
     <parent link="world"/>
     <child link="table_link"/>
