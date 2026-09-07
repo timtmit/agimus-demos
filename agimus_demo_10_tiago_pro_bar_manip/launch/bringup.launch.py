@@ -444,6 +444,8 @@ def launch_setup(
         mocap_tf_pub,
         mocap_repositioning_node,
         nav_node,
+        mocap_tf_pub,
+        mocap_repositioning_node,
     ]
 
 
