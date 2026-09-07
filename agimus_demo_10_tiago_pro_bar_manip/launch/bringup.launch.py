@@ -441,8 +441,6 @@ def launch_setup(
         # plotjuggler,
         world_to_gazebo_bridge,
         gz_bridge_odom,
-        mocap_tf_pub,
-        mocap_repositioning_node,
         nav_node,
         mocap_tf_pub,
         mocap_repositioning_node,
