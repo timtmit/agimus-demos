@@ -19,8 +19,8 @@
   <!-- <link name="table_link"/> -->
   <joint name="table_world_joint" type="fixed">
     <parent link="world"/>
-    <child link="mocap_table"/>
-    <origin xyz="2.3 0 0.74" rpy="0 0 3.14"/>
+    <child link="table_mocap"/>
+    <origin xyz="2 0.7 0.74" rpy="0 0 -${pi/2}"/>
   </joint>
 
   <xacro:bordered_plate name="plate">

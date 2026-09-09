@@ -190,7 +190,7 @@ def launch_setup(
             "-topic",
             "bar_description",
             "-x",
-            "1.68",
+            "2.08",
             "-y",
             "0.0",
             "-z",
@@ -396,30 +396,16 @@ def launch_setup(
         output="screen",
     )
 
-    # MOCAP ===========================================
-
-    mocap_tf_pub = Node(
-        package="mocap_ros",
-        executable="mocap_node",
-        name="mocap_node",
-        output="screen",
-        parameters=[
-            {
-                "param_file": PathJoinSubstitution(
-                    [FindPackageShare(PKG_NAME), "config", "mocap_config.yaml"]
-                ),
-            }
-        ],
-    )
-
-    mocap_repositioning_node = Node(
-        package=PKG_NAME,
-        executable="mocap_repositioning_node",
-        name="mocap_repositioning_node",
-        output="screen",
-    )
-
     return [
+        # SIM ONLY ==============================
+        set_gz_resource_path,
+        world_to_gazebo_bridge,
+        gz_bridge_odom,
+        spawn_bar,
+        spawn_environment,
+        environment_pose_bridge,
+        bar_pose_bridge,
+        bar_tf_bridge,
         # COMMON ================================
         rviz,
         tiago_robot_launch,
@@ -432,18 +418,7 @@ def launch_setup(
         # orchestrator,
         tf_goal_bar,
         nav_node,
-        # SIM ONLY ==============================
-        set_gz_resource_path,
-        world_to_gazebo_bridge,
-        gz_bridge_odom,
-        spawn_bar,
-        spawn_environment,
-        environment_pose_bridge,
-        bar_pose_bridge,
-        bar_tf_bridge,
         # IRL ===================================
-        mocap_tf_pub,
-        mocap_repositioning_node,
         # wait_for_non_zero_joints_node,
         # plotjuggler,
     ]
