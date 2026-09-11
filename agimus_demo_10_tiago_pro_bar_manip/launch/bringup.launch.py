@@ -190,7 +190,7 @@ def launch_setup(
             "-topic",
             "bar_description",
             "-x",
-            "1.68",
+            "2.08",
             "-y",
             "0.0",
             "-z",
@@ -393,32 +393,34 @@ def launch_setup(
                 "use_sim_time": use_gazebo,
             }
         ],
-        condition=IfCondition(use_gazebo),
         output="screen",
     )
 
     return [
+        # SIM ONLY ==============================
         set_gz_resource_path,
-        tiago_robot_launch,
-        rviz,
-        # wait_for_non_zero_joints_node,
-        env_publisher,
-        spawn_environment,
-        bar_publisher,
+        world_to_gazebo_bridge,
+        gz_bridge_odom,
         spawn_bar,
+        spawn_environment,
         environment_pose_bridge,
         bar_pose_bridge,
+        bar_tf_bridge,
+        # COMMON ================================
+        rviz,
+        tiago_robot_launch,
+        env_publisher,
+        bar_publisher,
+        agimus_controller_node,
+        robot_srdf_publisher_node,
         tf_odom,
         world_odom,
         # orchestrator,
         tf_goal_bar,
-        robot_srdf_publisher_node,
-        agimus_controller_node,
-        bar_tf_bridge,
-        # plotjuggler,
-        world_to_gazebo_bridge,
-        gz_bridge_odom,
         nav_node,
+        # IRL ===================================
+        # wait_for_non_zero_joints_node,
+        # plotjuggler,
     ]
 
 
